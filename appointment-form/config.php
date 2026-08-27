@@ -1,0 +1,94 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Appointment booking configuration.
+ * Secrets come from the project-root .env file. Never send KEY_SECRET to the browser.
+ */
+function appointment_config(): array
+{
+    static $config = null;
+
+    if ($config !== null) {
+        return $config;
+    }
+
+    $env = appointment_load_env(dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env');
+
+    $config = [
+        'razorpay_key_id' => appointment_env($env, 'RAZORPAY_KEY_ID'),
+        'razorpay_key_secret' => appointment_env($env, 'RAZORPAY_KEY_SECRET'),
+        'google_sheet_id' => appointment_env($env, 'GOOGLE_SHEET_ID'),
+        'google_sheet_name' => appointment_env($env, 'GOOGLE_SHEET_NAME', 'website-appointments'),
+        'google_sheet_tab' => appointment_env($env, 'GOOGLE_SHEET_TAB_NAME', 'Sheet1'),
+        'apps_script_url' => rtrim(appointment_env($env, 'GOOGLE_APPS_SCRIPT_WEBAPP_URL', ''), '/'),
+        'apps_script_secret' => appointment_env($env, 'GOOGLE_APPS_SCRIPT_SECRET', ''),
+
+        'amount_paise' => 100,
+        'currency' => 'INR',
+        'timezone' => 'Asia/Kolkata',
+        'slot_duration_minutes' => 60,
+        'day_start' => '10:00',
+        'day_end' => '19:00',
+        'booking_days_ahead' => 30,
+        'hold_minutes' => 15,
+
+        'business_name' => 'Eat Rrite',
+        'business_description' => 'Appointment confirmation',
+
+        'services' => [
+            'Weight & Lifestyle Management Program',
+            'Gut Health Diet Program',
+            'Celiac And Crohn Disease',
+            'Female Hormone Health Diet Program',
+            'Diabetes Management And Reversal Diet Plan',
+            'Heart Disease Management Diet Program',
+            'Oncology (Cancer) Disease Management Nutrition Program',
+            'Enduro Sports Nutrition Program',
+            'NutriCare for Mom-to-Be',
+            'Post Natal NutriCare and Weight Loss Program',
+        ],
+    ];
+
+    return $config;
+}
+
+function appointment_load_env(string $path): array
+{
+    if (!is_readable($path)) {
+        throw new RuntimeException('Missing .env file at project root.');
+    }
+
+    $vars = [];
+
+    foreach (file($path, FILE_IGNORE_NEW_LINES) as $line) {
+        $line = trim($line);
+
+        if ($line === '' || str_starts_with($line, '#')) {
+            continue;
+        }
+
+        if (!str_contains($line, '=')) {
+            continue;
+        }
+
+        [$key, $value] = explode('=', $line, 2);
+        $vars[trim($key)] = trim($value);
+    }
+
+    return $vars;
+}
+
+function appointment_env(array $env, string $key, ?string $default = null): string
+{
+    if (array_key_exists($key, $env) && $env[$key] !== '') {
+        return $env[$key];
+    }
+
+    if ($default !== null) {
+        return $default;
+    }
+
+    throw new RuntimeException('Missing required environment variable: ' . $key);
+}

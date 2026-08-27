@@ -1,0 +1,64 @@
+<?php
+
+declare(strict_types=1);
+
+function appointment_json_input(): array
+{
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw !== false && $raw !== '' ? $raw : '[]', true);
+
+    if (!is_array($data)) {
+        appointment_json_error('Invalid JSON body.', 400);
+    }
+
+    return $data;
+}
+
+function appointment_json_ok(array $payload, int $status = 200): void
+{
+    appointment_json_response(['ok' => true] + $payload, $status);
+}
+
+function appointment_json_error(string $message, int $status = 400, array $extra = []): void
+{
+    appointment_json_response(['ok' => false, 'error' => $message] + $extra, $status);
+}
+
+function appointment_json_response(array $payload, int $status): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function appointment_csrf_token(): string
+{
+    if (empty($_SESSION['er_csrf']) || !is_string($_SESSION['er_csrf'])) {
+        $_SESSION['er_csrf'] = bin2hex(random_bytes(16));
+    }
+
+    return $_SESSION['er_csrf'];
+}
+
+function appointment_assert_csrf(): void
+{
+    $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+
+    if (!is_string($token) || !hash_equals(appointment_csrf_token(), $token)) {
+        appointment_json_error('Your session expired. Refresh the page and try again.', 403);
+    }
+}
+
+function appointment_require_post(): void
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        appointment_json_error('Method not allowed.', 405);
+    }
+}
+
+function appointment_public_path(string $relative): string
+{
+    return 'appointment-form/' . ltrim($relative, '/');
+}
