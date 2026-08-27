@@ -20,7 +20,7 @@ function appointment_config(): array
         'razorpay_key_id' => appointment_env($env, 'RAZORPAY_KEY_ID'),
         'razorpay_key_secret' => appointment_env($env, 'RAZORPAY_KEY_SECRET'),
         'google_sheet_id' => appointment_env($env, 'GOOGLE_SHEET_ID'),
-        'google_sheet_name' => appointment_env($env, 'GOOGLE_SHEET_NAME', 'website-appointments'),
+        'google_sheet_name' => appointment_env($env, 'GOOGLE_SHEET_NAME', 'eatrrite-website-appointments'),
         'google_sheet_tab' => appointment_env($env, 'GOOGLE_SHEET_TAB_NAME', 'Sheet1'),
         'apps_script_url' => rtrim(appointment_env($env, 'GOOGLE_APPS_SCRIPT_WEBAPP_URL', ''), '/'),
         'apps_script_secret' => appointment_env($env, 'GOOGLE_APPS_SCRIPT_SECRET', ''),

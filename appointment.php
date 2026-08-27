@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/appointment-form/bootstrap.php'; ?>
 <!DOCTYPE html>
 <html lang="en">
 <?php
@@ -30,48 +31,7 @@
             <div class="col-lg-6">
                <div class="appointment-form h-100 d-flex flex-column justify-content-center text-center p-5 wow zoomIn" data-wow-delay="0.6s">
                   <h1 class="text-dark mb-4">Make Appointment</h1>
-                  <form action="email/bookappointment.php" method="post">
-                     <div class="row g-3">
-                        <div class="col-12 col-sm-12">
-                           <select class="form-select bg-light border-0" style="height: 55px;" name="programname" required>
-                                <option value="">Select A Service</option>
-                                <option value="Weight & Lifestyle Management Program">Weight & Lifestyle Management Program</option>
-                                <option value="Gut Health Diet Program">Gut Health Diet Program</option>
-                                <option value="Celiac And Crohn Disease">Celiac And Crohn Disease</option>
-                                <option value="Female Hormone Health Diet Program">Female Hormone Health Diet Program</option>
-                                <option value="Diabetes Management And Reversal Diet Plan">Diabetes Management And Reversal Diet Plan</option>
-                                <option value="Heart Disease Management Diet Program">Heart Disease Management Diet Program</option>
-                                <option value="Oncology (Cancer) Disease Management Nutrition Program">Oncology (Cancer) Disease Management Nutrition Program</option>
-                                <option value="Enduro Sports Nutrition Program">Enduro Sports Nutrition Program</option>
-                                <option value="NutriCare for Mom-to-Be">NutriCare for Mom-to-Be</option>
-                                <option value="Post Natal NutriCare and Weight Loss Program">Post Natal NutriCare and Weight Loss Program</option>
-                           </select>
-                        </div>
-                        <div class="col-12 col-sm-6">
-                           <input type="text" class="form-control bg-light border-0" placeholder="Your Name" style="height: 55px;" name="name" required>
-                        </div>
-                        <div class="col-12 col-sm-6">
-                           <input type="number" class="form-control bg-light border-0" placeholder="Phone Number" style="height: 55px;" name="mobilenumber" required>
-                        </div>
-                        <div class="col-12 col-sm-6">
-                           <div class="date" id="date1" data-target-input="nearest">
-                              <input type="text"
-                                 class="form-control bg-light border-0 datetimepicker-input"
-                                 placeholder="Appointment Date" data-target="#date1" data-toggle="datetimepicker" style="height: 55px;" name="date" required>
-                           </div>
-                        </div>
-                        <div class="col-12 col-sm-6">
-                           <div class="time" id="time1" data-target-input="nearest">
-                              <input type="text"
-                                 class="form-control bg-light border-0 datetimepicker-input"
-                                 placeholder="Appointment Time" data-target="#time1" data-toggle="datetimepicker" style="height: 55px;" name="time" required>
-                           </div>
-                        </div>
-                        <div class="col-12">
-                           <button class="btn btn-dark w-100 py-3" type="submit">Make Appointment</button>
-                        </div>
-                     </div>
-                  </form>
+                  <?php include __DIR__ . '/appointment-form/form.php'; ?>
                </div>
             </div>
          </div>
