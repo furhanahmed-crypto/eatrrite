@@ -25,7 +25,7 @@ function appointment_config(): array
         'apps_script_url' => rtrim(appointment_env($env, 'GOOGLE_APPS_SCRIPT_WEBAPP_URL', ''), '/'),
         'apps_script_secret' => appointment_env($env, 'GOOGLE_APPS_SCRIPT_SECRET', ''),
 
-        'amount_paise' => 100,
+        'amount_rupees' => 800,
         'currency' => 'INR',
         'timezone' => 'Asia/Kolkata',
         'slot_duration_minutes' => 60,

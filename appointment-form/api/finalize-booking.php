@@ -7,11 +7,10 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 appointment_require_post();
 appointment_assert_csrf();
 
+set_time_limit(180);
+
 try {
-    $input = appointment_json_input();
-    $result = appointment_service()->verifyPayment($input);
-    appointment_store_verified_booking($input, $result);
-    $result['redirect'] = appointment_thank_you_url();
+    $result = appointment_service()->finalizeBooking(appointment_json_input());
     appointment_json_ok($result);
 } catch (InvalidArgumentException $e) {
     appointment_json_error($e->getMessage(), 400);

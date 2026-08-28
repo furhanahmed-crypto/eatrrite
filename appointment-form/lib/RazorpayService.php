@@ -7,14 +7,14 @@ final class RazorpayService
     private string $keyId;
     private string $keySecret;
     private string $currency;
-    private int $amountPaise;
+    private int $amountRupees;
 
     public function __construct(array $config)
     {
         $this->keyId = $config['razorpay_key_id'];
         $this->keySecret = $config['razorpay_key_secret'];
         $this->currency = $config['currency'];
-        $this->amountPaise = (int) $config['amount_paise'];
+        $this->amountRupees = (int) $config['amount_rupees'];
     }
 
     public function keyId(): string
@@ -22,9 +22,14 @@ final class RazorpayService
         return $this->keyId;
     }
 
-    public function amountPaise(): int
+    public function amountRupees(): int
     {
-        return $this->amountPaise;
+        return $this->amountRupees;
+    }
+
+    private function amountInPaise(): int
+    {
+        return $this->amountRupees * 100;
     }
 
     public function currency(): string
@@ -38,12 +43,14 @@ final class RazorpayService
      */
     public function createOrder(array $notes): array
     {
-        if ($this->amountPaise < 100) {
-            throw new RuntimeException('Razorpay amount must be at least 100 paise.');
+        if ($this->amountRupees < 1) {
+            throw new RuntimeException('Appointment fee must be at least ₹1.');
         }
 
+        $amountPaise = $this->amountInPaise();
+
         $payload = [
-            'amount' => $this->amountPaise,
+            'amount' => $amountPaise,
             'currency' => $this->currency,
             'receipt' => 'er_' . bin2hex(random_bytes(6)),
             'payment_capture' => 1,
@@ -58,7 +65,7 @@ final class RazorpayService
 
         return [
             'id' => (string) $response['id'],
-            'amount' => (int) ($response['amount'] ?? $this->amountPaise),
+            'amount' => (int) ($response['amount'] ?? $amountPaise),
             'currency' => (string) ($response['currency'] ?? $this->currency),
         ];
     }

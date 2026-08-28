@@ -1,9 +1,9 @@
 <head>
     <meta charset="utf-8">
-    <title>Eat Rrite - Nutritionist, Holistic health and Wellness</title>
+    <title><?php echo htmlspecialchars($pageTitle ?? 'Eat Rrite - Nutritionist, Holistic health and Wellness', ENT_QUOTES, 'UTF-8'); ?></title>
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
-    <meta content="Best Nutritionist Services In India" name="keywords">
-    <meta content="Best Nutritionist Services In India" name="description">
+    <meta content="<?php echo htmlspecialchars($pageKeywords ?? 'Best Nutritionist Services In India', ENT_QUOTES, 'UTF-8'); ?>" name="keywords">
+    <meta content="<?php echo htmlspecialchars($pageDescription ?? 'Best Nutritionist Services In India', ENT_QUOTES, 'UTF-8'); ?>" name="description">
     <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-QMGN3TC0GP"></script>
 <script>

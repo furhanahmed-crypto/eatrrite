@@ -119,7 +119,7 @@ final class GoogleAppsScriptClient
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
-            CURLOPT_TIMEOUT => 45,
+            CURLOPT_TIMEOUT => 120,
         ]);
 
         $raw = curl_exec($ch);

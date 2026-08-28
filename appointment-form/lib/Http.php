@@ -62,3 +62,44 @@ function appointment_public_path(string $relative): string
 {
     return 'appointment-form/' . ltrim($relative, '/');
 }
+
+function appointment_thank_you_url(): string
+{
+    return 'appointment-thank-you.php';
+}
+
+/**
+ * @param array<string, string> $payment
+ * @param array<string, mixed> $verified
+ */
+function appointment_store_verified_booking(array $payment, array $verified): void
+{
+    $_SESSION['er_verified_booking'] = [
+        'payment' => [
+            'razorpay_order_id' => (string) ($payment['razorpay_order_id'] ?? ''),
+            'razorpay_payment_id' => (string) ($payment['razorpay_payment_id'] ?? ''),
+            'razorpay_signature' => (string) ($payment['razorpay_signature'] ?? ''),
+        ],
+        'verified' => $verified,
+        'stored_at' => time(),
+    ];
+}
+
+/**
+ * @return array{payment:array<string, string>, verified:array<string, mixed>, stored_at:int}|null
+ */
+function appointment_verified_booking(): ?array
+{
+    $data = $_SESSION['er_verified_booking'] ?? null;
+    if (!is_array($data) || !is_array($data['payment'] ?? null) || !is_array($data['verified'] ?? null)) {
+        return null;
+    }
+
+    if (time() - (int) ($data['stored_at'] ?? 0) > 86400) {
+        unset($_SESSION['er_verified_booking']);
+
+        return null;
+    }
+
+    return $data;
+}

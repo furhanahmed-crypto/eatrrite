@@ -11,9 +11,9 @@
 
     const apiBase = form.dataset.api;
     const csrf = form.dataset.csrf;
+    const amountRupees = form.dataset.amountRupees || '800';
+    const payLabel = 'Pay ₹' + amountRupees + ' and book';
     const alertBox = form.querySelector('[data-er-alert]');
-    const successBox = form.querySelector('[data-er-success]');
-    const fieldsBox = form.querySelector('[data-er-fields]');
     const submitBtn = form.querySelector('[data-er-submit]');
     const slotLabel = form.querySelector('[data-er-slot-label]');
     const dateInput = form.querySelector('[data-er-date]');
@@ -108,7 +108,7 @@
     function setLoading(isLoading) {
         state.loading = isLoading;
         submitBtn.disabled = isLoading;
-        submitBtn.textContent = isLoading ? 'Processing…' : 'Pay ₹1 and book';
+        submitBtn.textContent = isLoading ? 'Processing…' : payLabel;
     }
 
     async function request(path, options) {
@@ -285,18 +285,6 @@
         showAlert('');
     }
 
-    function showSuccess(result) {
-        fieldsBox.hidden = true;
-        successBox.hidden = false;
-        successBox.querySelector('[data-er-success-copy]').textContent =
-            'Hi ' + result.name + ', your ' + result.service + ' consultation is booked for ' +
-            result.display_date + ' at ' + result.display_time + '.';
-        const meet = successBox.querySelector('[data-er-meet-link]');
-        meet.href = result.meet_link;
-        meet.textContent = result.meet_link;
-        form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
     trigger.addEventListener('click', openModal);
     modal.querySelectorAll('[data-er-close-slots]').forEach(function (el) {
         el.addEventListener('click', closeModal);
@@ -328,6 +316,7 @@
 
         const payload = {
             name: form.elements.name.value.trim(),
+            email: form.elements.email.value.trim(),
             programname: form.elements.programname.value,
             mobilenumber: form.elements.mobilenumber.value.trim(),
             date: dateInput.value,
@@ -347,26 +336,30 @@
                 amount: order.amount,
                 currency: order.currency,
                 name: 'Eat Rrite',
-                description: 'Appointment confirmation · ₹1',
+                description: 'Appointment confirmation · ₹' + amountRupees,
                 order_id: order.order_id,
                 prefill: {
                     name: payload.name,
+                    email: payload.email,
                     contact: payload.mobilenumber,
                 },
                 notes: {
                     date: payload.date,
                     time: payload.time,
                     service: payload.programname,
+                    email: payload.email,
                 },
                 theme: { color: '#38640e' },
                 handler: function (response) {
                     request('verify-payment.php', {
                         method: 'POST',
                         body: JSON.stringify(response),
-                    }).then(showSuccess).catch(function (error) {
-                        showAlert(error.message);
-                    }).finally(function () {
+                    }).then(function (verified) {
+                        const target = verified.redirect || 'appointment-thank-you.php';
+                        window.location.assign(target);
+                    }).catch(function (error) {
                         setLoading(false);
+                        showAlert(error.message);
                     });
                 },
                 modal: {
