@@ -15,6 +15,7 @@ function appointment_config(): array
     }
 
     $env = appointment_load_env(dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env');
+    $slotTimes = require __DIR__ . '/constants/slot-times-config.php';
 
     $config = [
         'razorpay_key_id' => appointment_env($env, 'RAZORPAY_KEY_ID'),
@@ -22,17 +23,17 @@ function appointment_config(): array
         'google_sheet_id' => appointment_env($env, 'GOOGLE_SHEET_ID'),
         'google_sheet_name' => appointment_env($env, 'GOOGLE_SHEET_NAME', 'eatrrite-website-appointments'),
         'google_sheet_tab' => appointment_env($env, 'GOOGLE_SHEET_TAB_NAME', 'Sheet1'),
+        'google_slot_times_tab' => appointment_env($env, 'GOOGLE_SLOT_TIMES_TAB', 'slot-times-config'),
         'apps_script_url' => rtrim(appointment_env($env, 'GOOGLE_APPS_SCRIPT_WEBAPP_URL', ''), '/'),
         'apps_script_secret' => appointment_env($env, 'GOOGLE_APPS_SCRIPT_SECRET', ''),
 
         'amount_rupees' => 800,
         'currency' => 'INR',
         'timezone' => 'Asia/Kolkata',
-        'slot_duration_minutes' => 60,
-        'day_start' => '10:00',
-        'day_end' => '19:00',
+        'slot_times' => $slotTimes,
         'booking_days_ahead' => 30,
         'hold_minutes' => 15,
+        'admin_dashboard_password' => appointment_env($env, 'ADMIN_DASHBOARD_PASSWORD', ''),
 
         'business_name' => 'Eat Rrite',
         'business_description' => 'Appointment confirmation',

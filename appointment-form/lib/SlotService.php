@@ -4,44 +4,67 @@ declare(strict_types=1);
 
 final class SlotService
 {
+    private const WEEKDAYS = [
+        1 => 'monday',
+        2 => 'tuesday',
+        3 => 'wednesday',
+        4 => 'thursday',
+        5 => 'friday',
+        6 => 'saturday',
+        7 => 'sunday',
+    ];
+
     private DateTimeZone $tz;
-    private int $duration;
     private int $daysAhead;
-    private string $dayStart;
-    private string $dayEnd;
+    private int $meetingMinutes;
+    private int $prepMinutes;
+    private int $blockMinutes;
+    private int $fallbackMinutes;
+
+    /** @var array<string, list<array{start:string,end:string}>> */
+    private array $weeklyHours;
 
     public function __construct(array $config)
     {
+        $rules = $config['slot_times'] ?? [];
+        if (!is_array($rules) || $rules === []) {
+            throw new RuntimeException('Missing slot-times-config. Add appointment-form/constants/slot-times-config.php.');
+        }
+
         $this->tz = new DateTimeZone($config['timezone']);
-        $this->duration = (int) $config['slot_duration_minutes'];
         $this->daysAhead = (int) $config['booking_days_ahead'];
-        $this->dayStart = $config['day_start'];
-        $this->dayEnd = $config['day_end'];
+        $this->meetingMinutes = (int) $rules['customer_meeting_minutes'];
+        $this->prepMinutes = (int) $rules['consultant_prep_minutes'];
+        $this->fallbackMinutes = (int) $rules['fallback_interval_minutes'];
+        $this->blockMinutes = $this->meetingMinutes + $this->prepMinutes;
+        $this->weeklyHours = $this->normalizeWeeklyHours($rules['weekly_hours'] ?? []);
+
+        if ($this->meetingMinutes <= 0 || $this->prepMinutes < 0 || $this->fallbackMinutes <= 0) {
+            throw new RuntimeException('Invalid slot duration constants in slot-times-config.');
+        }
+    }
+
+    public function customerMeetingMinutes(): int
+    {
+        return $this->meetingMinutes;
+    }
+
+    public function consultantPrepMinutes(): int
+    {
+        return $this->prepMinutes;
+    }
+
+    public function consultantBlockMinutes(): int
+    {
+        return $this->blockMinutes;
     }
 
     /**
-     * @return list<string> Times in 24h H:i, e.g. 10:00
+     * @return array<string, list<array{start:string,end:string}>>
      */
-    public function times(): array
+    public function weeklyHours(): array
     {
-        $times = [];
-        $cursor = DateTimeImmutable::createFromFormat('H:i', $this->dayStart, $this->tz);
-        $end = DateTimeImmutable::createFromFormat('H:i', $this->dayEnd, $this->tz);
-
-        if ($cursor === false || $end === false) {
-            throw new RuntimeException('Invalid clinic hours in config.');
-        }
-
-        while ($cursor < $end) {
-            $slotEnd = $cursor->modify('+' . $this->duration . ' minutes');
-            if ($slotEnd > $end) {
-                break;
-            }
-            $times[] = $cursor->format('H:i');
-            $cursor = $slotEnd;
-        }
-
-        return $times;
+        return $this->weeklyHours;
     }
 
     public function today(): DateTimeImmutable
@@ -65,14 +88,67 @@ final class SlotService
         return $parsed;
     }
 
-    public function isValidTime(string $time): bool
+    public function isOfferedTime(string $date, string $time): bool
     {
-        return in_array($time, $this->times(), true);
+        $normalized = $this->normalizeTime($time);
+
+        return $normalized !== null && in_array($normalized, $this->offeredTimesForDate($date), true);
     }
 
-    public function assertBookable(string $date, string $time, array $taken): void
+    /**
+     * Start times this weekday would offer with no bookings (includes past times).
+     *
+     * @return list<string>
+     */
+    public function offeredTimesForDate(string $date): array
     {
-        if (!$this->isValidTime($time)) {
+        return $this->availableTimesForDate($date, [], false);
+    }
+
+    /**
+     * Open start times after applying occupancy, duplicates, and (by default) past-time filtering.
+     *
+     * @param list<array{date?:string,time?:string}> $occupied
+     * @return list<string>
+     */
+    public function availableTimesForDate(string $date, array $occupied = [], bool $hidePast = true): array
+    {
+        $day = $this->parseDate($date);
+        $windows = $this->windowsForDate($day);
+        if ($windows === []) {
+            return [];
+        }
+
+        $blocks = $this->mergedOccupancyForDate($date, $occupied);
+        $starts = [];
+
+        foreach ($windows as $window) {
+            foreach ($this->startsForWindow($window, $blocks) as $minutes) {
+                $starts[$this->formatMinutes($minutes)] = true;
+            }
+        }
+
+        $times = array_keys($starts);
+        sort($times);
+
+        if ($hidePast) {
+            $now = $this->today();
+            $times = array_values(array_filter(
+                $times,
+                fn (string $time): bool => $this->slotStart($date, $time) > $now
+            ));
+        }
+
+        return $times;
+    }
+
+    /**
+     * @param list<array{date?:string,time?:string}> $occupied
+     */
+    public function assertBookable(string $date, string $time, array $occupied): void
+    {
+        $normalized = $this->normalizeTime($time);
+        if ($normalized === null || !$this->isOfferedTime($date, $normalized)) {
             throw new InvalidArgumentException('That time slot is not offered.');
         }
 
@@ -87,21 +163,25 @@ final class SlotService
             throw new InvalidArgumentException('Please choose a date within the next ' . $this->daysAhead . ' days.');
         }
 
-        $start = $this->slotStart($date, $time);
+        $start = $this->slotStart($date, $normalized);
         if ($start <= $this->today()) {
             throw new InvalidArgumentException('That time has already passed. Pick another slot.');
         }
 
-        $key = $this->slotKey($date, $time);
-        if (in_array($key, $taken, true)) {
+        $open = $this->availableTimesForDate($date, $occupied);
+        if (!in_array($normalized, $open, true)) {
             throw new InvalidArgumentException('That slot was just booked. Please pick another time.');
         }
     }
 
     public function slotStart(string $date, string $time): DateTimeImmutable
     {
-        $start = DateTimeImmutable::createFromFormat('Y-m-d H:i', $date . ' ' . $time, $this->tz);
+        $normalized = $this->normalizeTime($time);
+        if ($normalized === null) {
+            throw new InvalidArgumentException('Invalid date or time.');
+        }
 
+        $start = DateTimeImmutable::createFromFormat('Y-m-d H:i', $date . ' ' . $normalized, $this->tz);
         if ($start === false) {
             throw new InvalidArgumentException('Invalid date or time.');
         }
@@ -111,17 +191,29 @@ final class SlotService
 
     public function slotEnd(string $date, string $time): DateTimeImmutable
     {
-        return $this->slotStart($date, $time)->modify('+' . $this->duration . ' minutes');
+        return $this->slotStart($date, $time)->modify('+' . $this->meetingMinutes . ' minutes');
+    }
+
+    public function consultantSlotEnd(string $date, string $time): DateTimeImmutable
+    {
+        return $this->slotStart($date, $time)->modify('+' . $this->blockMinutes . ' minutes');
     }
 
     public function slotKey(string $date, string $time): string
     {
-        return $date . '|' . $time;
+        $normalized = $this->normalizeTime($time) ?? $time;
+
+        return $date . '|' . $normalized;
     }
 
     public function displayTime(string $time): string
     {
-        $parsed = DateTimeImmutable::createFromFormat('H:i', $time, $this->tz);
+        $normalized = $this->normalizeTime($time);
+        if ($normalized === null) {
+            return $time;
+        }
+
+        $parsed = DateTimeImmutable::createFromFormat('H:i', $normalized, $this->tz);
 
         return $parsed ? $parsed->format('g:i A') : $time;
     }
@@ -131,26 +223,316 @@ final class SlotService
         return $this->parseDate($date)->format('D, j M Y');
     }
 
+    public function publicHoursNote(): string
+    {
+        $parts = [];
+        $pendingDays = [];
+        $pendingHours = null;
+
+        $flush = function () use (&$parts, &$pendingDays, &$pendingHours): void {
+            if ($pendingHours === null || $pendingDays === []) {
+                return;
+            }
+
+            $parts[] = implode('–', $this->compactDayRange($pendingDays)) . ' ' . $pendingHours;
+            $pendingDays = [];
+            $pendingHours = null;
+        };
+
+        foreach (self::WEEKDAYS as $name) {
+            $hours = $this->formatWindows($this->weeklyHours[$name] ?? []);
+            if ($pendingHours !== null && $hours !== $pendingHours) {
+                $flush();
+            }
+            $pendingHours = $hours;
+            $pendingDays[] = $this->shortWeekday($name);
+        }
+        $flush();
+
+        return implode(' · ', $parts);
+    }
+
     /**
-     * @param list<array{date:string,time:string}> $booked
+     * Normalize sheet/hold rows, drop blanks, and collapse duplicate date+time pairs.
+     *
+     * @param list<array{date?:string,time?:string}> $booked
+     * @param list<array{date?:string,time?:string}> $held
+     * @return list<array{date:string,time:string}>
+     */
+    public function occupancyRows(array $booked, array $held): array
+    {
+        $unique = [];
+
+        foreach (array_merge($booked, $held) as $row) {
+            $date = trim((string) ($row['date'] ?? ''));
+            $time = $this->normalizeTime((string) ($row['time'] ?? ''));
+            if ($date === '' || $time === null) {
+                continue;
+            }
+
+            try {
+                $this->parseDate($date);
+            } catch (InvalidArgumentException) {
+                continue;
+            }
+
+            $unique[$this->slotKey($date, $time)] = [
+                'date' => $date,
+                'time' => $time,
+            ];
+        }
+
+        return array_values($unique);
+    }
+
+    public function timesOverlap(string $timeA, string $timeB): bool
+    {
+        $startA = $this->toMinutes($timeA);
+        $startB = $this->toMinutes($timeB);
+        if ($startA === null || $startB === null) {
+            return $timeA === $timeB;
+        }
+
+        return $startA < ($startB + $this->blockMinutes) && $startB < ($startA + $this->blockMinutes);
+    }
+
+    /**
+     * @param array<string, mixed> $weekly
+     * @return array<string, list<array{start:string,end:string}>>
+     */
+    private function normalizeWeeklyHours(array $weekly): array
+    {
+        $hours = [];
+
+        foreach (self::WEEKDAYS as $name) {
+            $windows = $weekly[$name] ?? [];
+            if (!is_array($windows)) {
+                throw new RuntimeException('weekly_hours.' . $name . ' must be a list of start/end windows.');
+            }
+
+            $normalized = [];
+            foreach ($windows as $window) {
+                if (!is_array($window)) {
+                    continue;
+                }
+
+                $start = $this->normalizeTime((string) ($window['start'] ?? $window[0] ?? ''));
+                $end = $this->normalizeTime((string) ($window['end'] ?? $window[1] ?? ''));
+                if ($start === null || $end === null) {
+                    throw new RuntimeException('Invalid start/end in weekly_hours.' . $name . '. Use HH:MM.');
+                }
+
+                $startMinutes = $this->toMinutes($start);
+                $endMinutes = $this->toMinutes($end);
+                if ($startMinutes === null || $endMinutes === null || $endMinutes <= $startMinutes) {
+                    throw new RuntimeException('Availability window in weekly_hours.' . $name . ' must end after it starts.');
+                }
+
+                $normalized[] = ['start' => $start, 'end' => $end];
+            }
+
+            $hours[$name] = $normalized;
+        }
+
+        return $hours;
+    }
+
+    /**
+     * @return list<array{start:int,end:int,latest_start:int,capacity_end:int}>
+     */
+    private function windowsForDate(DateTimeImmutable $day): array
+    {
+        $name = self::WEEKDAYS[(int) $day->format('N')] ?? '';
+        $windows = [];
+
+        foreach ($this->weeklyHours[$name] ?? [] as $window) {
+            $start = $this->toMinutes($window['start']);
+            $end = $this->toMinutes($window['end']);
+            if ($start === null || $end === null) {
+                continue;
+            }
+
+            $windows[] = [
+                'start' => $start,
+                'end' => $end,
+                'latest_start' => $end - $this->meetingMinutes,
+                'capacity_end' => $end + $this->prepMinutes,
+            ];
+        }
+
+        return $windows;
+    }
+
+    /**
+     * @param list<array{date?:string,time?:string}> $occupied
+     * @return list<array{0:int,1:int}>
+     */
+    private function mergedOccupancyForDate(string $date, array $occupied): array
+    {
+        $blocks = [];
+
+        foreach ($occupied as $row) {
+            if (trim((string) ($row['date'] ?? '')) !== $date) {
+                continue;
+            }
+
+            $start = $this->toMinutes((string) ($row['time'] ?? ''));
+            if ($start === null) {
+                continue;
+            }
+
+            $blocks[] = [$start, $start + $this->blockMinutes];
+        }
+
+        if ($blocks === []) {
+            return [];
+        }
+
+        usort($blocks, static fn (array $a, array $b): int => $a[0] <=> $b[0]);
+
+        $merged = [];
+        foreach ($blocks as $block) {
+            if ($merged === [] || $block[0] > $merged[array_key_last($merged)][1]) {
+                $merged[] = $block;
+                continue;
+            }
+
+            $last = array_key_last($merged);
+            $merged[$last][1] = max($merged[$last][1], $block[1]);
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Offer every 15-minute start in the window. Hide any start whose 45-minute
+     * consultant block would overlap an existing booking.
+     *
+     * @param array{start:int,end:int,latest_start:int,capacity_end:int} $window
+     * @param list<array{0:int,1:int}> $blocks
+     * @return list<int>
+     */
+    private function startsForWindow(array $window, array $blocks): array
+    {
+        if ($window['latest_start'] < $window['start']) {
+            return [];
+        }
+
+        $starts = [];
+        for ($cursor = $window['start']; $cursor <= $window['latest_start']; $cursor += $this->fallbackMinutes) {
+            $blockEnd = $cursor + $this->blockMinutes;
+            if ($blockEnd > $window['capacity_end']) {
+                continue;
+            }
+            if ($this->overlapsAny($cursor, $blockEnd, $blocks)) {
+                continue;
+            }
+            $starts[] = $cursor;
+        }
+
+        return $starts;
+    }
+
+    /**
+     * @param list<array{0:int,1:int}> $blocks
+     */
+    private function overlapsAny(int $start, int $end, array $blocks): bool
+    {
+        foreach ($blocks as [$blockStart, $blockEnd]) {
+            if ($start < $blockEnd && $blockStart < $end) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<array{start:string,end:string}> $windows
+     */
+    private function formatWindows(array $windows): string
+    {
+        if ($windows === []) {
+            return 'unavailable';
+        }
+
+        $parts = [];
+        foreach ($windows as $window) {
+            $parts[] = $this->displayTime($window['start']) . '–' . $this->displayTime($window['end']);
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * @param list<string> $days
      * @return list<string>
      */
-    public function takenKeys(array $booked, array $held): array
+    private function compactDayRange(array $days): array
     {
-        $keys = [];
+        if (count($days) <= 2) {
+            return $days;
+        }
 
-        foreach ($booked as $row) {
-            if (!empty($row['date']) && !empty($row['time'])) {
-                $keys[] = $this->slotKey((string) $row['date'], (string) $row['time']);
+        return [$days[0] . '–' . $days[array_key_last($days)]];
+    }
+
+    private function shortWeekday(string $name): string
+    {
+        return [
+            'monday' => 'Mon',
+            'tuesday' => 'Tue',
+            'wednesday' => 'Wed',
+            'thursday' => 'Thu',
+            'friday' => 'Fri',
+            'saturday' => 'Sat',
+            'sunday' => 'Sun',
+        ][$name] ?? $name;
+    }
+
+    public function normalizeTime(string $time): ?string
+    {
+        $time = trim($time);
+        if ($time === '') {
+            return null;
+        }
+
+        $formats = ['H:i', 'G:i', 'H:i:s', 'G:i:s', 'h:i A', 'g:i A', 'h:i a', 'g:i a'];
+        foreach ($formats as $format) {
+            $parsed = DateTimeImmutable::createFromFormat('!' . $format, $time, $this->tz);
+            if ($parsed instanceof DateTimeImmutable && $parsed->format($format) === $time) {
+                return $parsed->format('H:i');
             }
         }
 
-        foreach ($held as $row) {
-            if (!empty($row['date']) && !empty($row['time'])) {
-                $keys[] = $this->slotKey((string) $row['date'], (string) $row['time']);
+        if (preg_match('/^(\d{1,2}):(\d{2})/', $time, $match) === 1) {
+            $hour = (int) $match[1];
+            $minute = (int) $match[2];
+            if ($hour <= 23 && $minute <= 59) {
+                return sprintf('%02d:%02d', $hour, $minute);
             }
         }
 
-        return array_values(array_unique($keys));
+        return null;
+    }
+
+    private function toMinutes(string $time): ?int
+    {
+        $normalized = $this->normalizeTime($time);
+        if ($normalized === null) {
+            return null;
+        }
+
+        [$hour, $minute] = array_map('intval', explode(':', $normalized));
+
+        return ($hour * 60) + $minute;
+    }
+
+    private function formatMinutes(int $minutes): string
+    {
+        $hours = intdiv($minutes, 60);
+        $mins = $minutes % 60;
+
+        return sprintf('%02d:%02d', $hours, $mins);
     }
 }

@@ -6,8 +6,9 @@ final class HoldService
 {
     private string $file;
     private int $holdMinutes;
+    private SlotService $slots;
 
-    public function __construct(array $config)
+    public function __construct(array $config, SlotService $slots)
     {
         $dir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data';
         if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
@@ -16,6 +17,7 @@ final class HoldService
 
         $this->file = $dir . DIRECTORY_SEPARATOR . 'holds.json';
         $this->holdMinutes = (int) $config['hold_minutes'];
+        $this->slots = $slots;
     }
 
     /**
@@ -30,7 +32,7 @@ final class HoldService
     {
         $this->mutate(function (array $holds) use ($date, $time, $orderId): array {
             foreach ($holds as $row) {
-                if ($row['date'] === $date && $row['time'] === $time) {
+                if ($row['date'] === $date && $this->slots->timesOverlap($row['time'], $time)) {
                     throw new InvalidArgumentException('That slot is on hold for another booking. Try a different time.');
                 }
             }

@@ -15,7 +15,7 @@ final class AppointmentService
     {
         $this->config = $config;
         $this->slots = new SlotService($config);
-        $this->holds = new HoldService($config);
+        $this->holds = new HoldService($config, $this->slots);
         $this->razorpay = new RazorpayService($config);
         $this->sheet = new GoogleAppsScriptClient($config);
         $this->bookings = new BookingStore();
@@ -24,34 +24,32 @@ final class AppointmentService
     /**
      * @return array{
      *   timezone:string,
-     *   times:list<string>,
-     *   booked:array<string, list<string>>,
+     *   days:array<string, list<string>>,
      *   from:string,
-     *   to:string
+     *   to:string,
+     *   customer_meeting_minutes:int,
+     *   consultant_block_minutes:int
      * }
      */
     public function availability(): array
     {
-        $taken = $this->takenKeys();
-        $booked = [];
+        $occupied = $this->occupancy();
+        $from = $this->slots->today()->setTime(0, 0, 0);
+        $to = $this->slots->lastBookableDate();
+        $days = [];
 
-        foreach ($taken as $key) {
-            [$date, $time] = explode('|', $key, 2);
-            $booked[$date][] = $time;
-        }
-
-        foreach ($booked as $date => $times) {
-            $booked[$date] = array_values(array_unique($times));
-            sort($booked[$date]);
+        for ($day = $from; $day <= $to; $day = $day->modify('+1 day')) {
+            $date = $day->format('Y-m-d');
+            $days[$date] = $this->slots->availableTimesForDate($date, $occupied);
         }
 
         return [
             'timezone' => $this->config['timezone'],
-            'times' => $this->slots->times(),
-            'booked' => $booked,
-            'from' => $this->slots->today()->format('Y-m-d'),
-            'to' => $this->slots->lastBookableDate()->format('Y-m-d'),
-            'slot_duration_minutes' => (int) $this->config['slot_duration_minutes'],
+            'days' => $days,
+            'from' => $from->format('Y-m-d'),
+            'to' => $to->format('Y-m-d'),
+            'customer_meeting_minutes' => $this->slots->customerMeetingMinutes(),
+            'consultant_block_minutes' => $this->slots->consultantBlockMinutes(),
         ];
     }
 
@@ -66,7 +64,7 @@ final class AppointmentService
             throw new RuntimeException('Online booking is not configured yet. Add the Google Apps Script web app URL to .env.');
         }
 
-        $this->slots->assertBookable($booking['date'], $booking['time'], $this->takenKeys());
+        $this->slots->assertBookable($booking['date'], $booking['time'], $this->occupancy());
 
         $order = $this->razorpay->createOrder([
             'name' => $booking['name'],
@@ -180,11 +178,11 @@ final class AppointmentService
         }
 
         try {
-            $taken = array_values(array_filter(
-                $this->takenKeys($orderId),
-                fn (string $key): bool => $key !== $this->slots->slotKey($booking['date'], $booking['time'])
+            $occupied = array_values(array_filter(
+                $this->occupancy($orderId),
+                fn (array $row): bool => $this->slots->slotKey($row['date'], $row['time']) !== $this->slots->slotKey($booking['date'], $booking['time'])
             ));
-            $this->slots->assertBookable($booking['date'], $booking['time'], $taken);
+            $this->slots->assertBookable($booking['date'], $booking['time'], $occupied);
 
             $result = $this->sheet->book([
                 'name' => $booking['name'],
@@ -195,6 +193,7 @@ final class AppointmentService
                 'payment_id' => $paymentId,
                 'start_iso' => $this->slots->slotStart($booking['date'], $booking['time'])->format(DateTimeInterface::ATOM),
                 'end_iso' => $this->slots->slotEnd($booking['date'], $booking['time'])->format(DateTimeInterface::ATOM),
+                'consultant_block_minutes' => $this->slots->consultantBlockMinutes(),
             ]);
 
             $completed = $this->bookings->update($paymentId, static function (array $row) use ($result): array {
@@ -379,7 +378,7 @@ final class AppointmentService
         }
 
         $this->slots->parseDate($date);
-        if (!$this->slots->isValidTime($time)) {
+        if (!$this->slots->isOfferedTime($date, $time)) {
             throw new InvalidArgumentException('Select a valid appointment time.');
         }
 
@@ -394,9 +393,9 @@ final class AppointmentService
     }
 
     /**
-     * @return list<string>
+     * @return list<array{date:string,time:string}>
      */
-    private function takenKeys(?string $ignoreOrderId = null): array
+    private function occupancy(?string $ignoreOrderId = null): array
     {
         $holds = $this->holds->activeHolds();
         if ($ignoreOrderId !== null) {
@@ -406,6 +405,6 @@ final class AppointmentService
             ));
         }
 
-        return $this->slots->takenKeys($this->sheet->listBookedSlots(), $holds);
+        return $this->slots->occupancyRows($this->sheet->listBookedSlots(), $holds);
     }
 }

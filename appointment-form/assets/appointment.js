@@ -77,11 +77,6 @@
         return state.availability ? state.availability.to : toIsoDate(new Date());
     }
 
-    function bookedTimes(iso) {
-        const booked = (state.availability && state.availability.booked[iso]) || [];
-        return new Set(booked);
-    }
-
     function isPastTime(iso, time) {
         const now = new Date();
         const [hours, minutes] = time.split(':').map(Number);
@@ -91,12 +86,11 @@
     }
 
     function availableTimes(iso) {
-        if (!state.availability) {
+        if (!state.availability || !state.availability.days) {
             return [];
         }
-        const booked = bookedTimes(iso);
-        return state.availability.times.filter(function (time) {
-            return !booked.has(time) && !isPastTime(iso, time);
+        return (state.availability.days[iso] || []).filter(function (time) {
+            return !isPastTime(iso, time);
         });
     }
 
@@ -215,38 +209,41 @@
 
     function renderTimes() {
         timesEl.innerHTML = '';
-        confirmBtn.disabled = !(state.selectedDate && state.selectedTime);
 
         if (!state.selectedDate) {
             selectedDayLabel.textContent = 'Select a date';
             timesMeta.textContent = '';
+            confirmBtn.disabled = true;
             return;
         }
 
         selectedDayLabel.textContent = formatDayLabel(state.selectedDate);
-        const times = state.availability ? state.availability.times : [];
         const open = availableTimes(state.selectedDate);
+        if (state.selectedTime && open.indexOf(state.selectedTime) === -1) {
+            state.selectedTime = '';
+        }
         timesMeta.textContent = open.length ? open.length + ' slots open' : 'No slots left';
+        confirmBtn.disabled = !state.selectedTime;
 
-        if (!times.length) {
-            timesEl.innerHTML = '<p class="er-times__empty">Unable to load clinic hours.</p>';
+        if (!state.availability || !state.availability.days) {
+            timesEl.innerHTML = '<p class="er-times__empty">Unable to load available slots.</p>';
             return;
         }
 
-        times.forEach(function (time) {
+        if (!open.length) {
+            timesEl.innerHTML = '<p class="er-times__empty">No consultation slots on this date.</p>';
+            return;
+        }
+
+        open.forEach(function (time) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'er-time';
             button.textContent = formatTime(time);
-            const isOpen = open.indexOf(time) !== -1;
-            button.disabled = !isOpen;
             if (time === state.selectedTime) {
                 button.classList.add('is-selected');
             }
             button.addEventListener('click', function () {
-                if (!isOpen) {
-                    return;
-                }
                 state.selectedTime = time;
                 renderTimes();
             });

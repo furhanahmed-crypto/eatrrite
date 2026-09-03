@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
-$config = appointment_config();
+$config = appointment_runtime_config();
+$slotService = new SlotService($config);
 $csrf = appointment_csrf_token();
 $assetBase = appointment_public_path('assets');
 $apiBase = appointment_public_path('api');
 $amountRupees = (int) $config['amount_rupees'];
+$meetingMinutes = $slotService->customerMeetingMinutes();
+$assetVersion = max(
+    (int) filemtime(__DIR__ . '/assets/appointment.js'),
+    (int) filemtime(__DIR__ . '/assets/appointment.css')
+);
 ?>
-<link rel="stylesheet" href="<?php echo htmlspecialchars($assetBase, ENT_QUOTES, 'UTF-8'); ?>/appointment.css">
+<link rel="stylesheet" href="<?php echo htmlspecialchars($assetBase, ENT_QUOTES, 'UTF-8'); ?>/appointment.css?v=<?php echo $assetVersion; ?>">
 
 <form
     id="er-appointment-form"
@@ -59,7 +65,7 @@ $amountRupees = (int) $config['amount_rupees'];
             <span class="er-slot-trigger__value" data-er-slot-label>Select date and time</span>
         </button>
 
-        <p class="er-fee-note">A ₹<?php echo $amountRupees; ?> confirmation fee holds your slot. Clinic hours: 10:00 AM – 7:00 PM IST.</p>
+        <p class="er-fee-note">A ₹<?php echo $amountRupees; ?> confirmation fee holds your <?php echo $meetingMinutes; ?>-minute consultation. Hours (IST): <?php echo htmlspecialchars($slotService->publicHoursNote(), ENT_QUOTES, 'UTF-8'); ?>.</p>
 
         <button type="submit" class="er-submit" data-er-submit>
             Pay ₹<?php echo $amountRupees; ?> and book
@@ -69,4 +75,4 @@ $amountRupees = (int) $config['amount_rupees'];
 
 <?php include __DIR__ . '/calendar-modal.php'; ?>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script src="<?php echo htmlspecialchars($assetBase, ENT_QUOTES, 'UTF-8'); ?>/appointment.js" defer></script>
+<script src="<?php echo htmlspecialchars($assetBase, ENT_QUOTES, 'UTF-8'); ?>/appointment.js?v=<?php echo $assetVersion; ?>" defer></script>

@@ -109,6 +109,12 @@ function appointment_send_email(
         $mail->Subject = $subject;
         $mail->Body = $htmlBody;
         $mail->AltBody = strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $htmlBody));
+
+        $logoPath = dirname(__DIR__) . '/img/logo/logoold.jpeg';
+        if (is_readable($logoPath) && str_contains($htmlBody, 'cid:eatrrite-logo')) {
+            $mail->addEmbeddedImage($logoPath, 'eatrrite-logo', 'logoold.jpeg');
+        }
+
         $mail->send();
     } catch (MailException $e) {
         throw new RuntimeException('Email could not be sent: ' . $mail->ErrorInfo);
