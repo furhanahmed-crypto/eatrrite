@@ -24,11 +24,14 @@ final class SlotService
     /** @var array<string, list<array{start:string,end:string}>> */
     private array $weeklyHours;
 
+    /** @var array<string, true> */
+    private array $disabledKeys = [];
+
     public function __construct(array $config)
     {
         $rules = $config['slot_times'] ?? [];
         if (!is_array($rules) || $rules === []) {
-            throw new RuntimeException('Missing slot-times-config. Add appointment-form/constants/slot-times-config.php.');
+            throw new RuntimeException('Missing slot-times-config from the Google Sheet tab.');
         }
 
         $this->tz = new DateTimeZone($config['timezone']);
@@ -38,6 +41,7 @@ final class SlotService
         $this->fallbackMinutes = (int) $rules['fallback_interval_minutes'];
         $this->blockMinutes = $this->meetingMinutes + $this->prepMinutes;
         $this->weeklyHours = $this->normalizeWeeklyHours($rules['weekly_hours'] ?? []);
+        $this->disabledKeys = $this->indexDisabled($config['disabled_slots'] ?? []);
 
         if ($this->meetingMinutes <= 0 || $this->prepMinutes < 0 || $this->fallbackMinutes <= 0) {
             throw new RuntimeException('Invalid slot duration constants in slot-times-config.');
@@ -96,40 +100,24 @@ final class SlotService
     }
 
     /**
-     * Start times this weekday would offer with no bookings (includes past times).
+     * Start times this weekday would offer with no bookings (includes past and hidden times).
      *
      * @return list<string>
      */
     public function offeredTimesForDate(string $date): array
     {
-        return $this->availableTimesForDate($date, [], false);
+        return $this->startTimesForDate($date, []);
     }
 
     /**
-     * Open start times after applying occupancy, duplicates, and (by default) past-time filtering.
+     * Open start times after applying occupancy, hidden slots, and (by default) past-time filtering.
      *
      * @param list<array{date?:string,time?:string}> $occupied
      * @return list<string>
      */
     public function availableTimesForDate(string $date, array $occupied = [], bool $hidePast = true): array
     {
-        $day = $this->parseDate($date);
-        $windows = $this->windowsForDate($day);
-        if ($windows === []) {
-            return [];
-        }
-
-        $blocks = $this->mergedOccupancyForDate($date, $occupied);
-        $starts = [];
-
-        foreach ($windows as $window) {
-            foreach ($this->startsForWindow($window, $blocks) as $minutes) {
-                $starts[$this->formatMinutes($minutes)] = true;
-            }
-        }
-
-        $times = array_keys($starts);
-        sort($times);
+        $times = $this->startTimesForDate($date, $occupied);
 
         if ($hidePast) {
             $now = $this->today();
@@ -137,6 +125,35 @@ final class SlotService
                 $times,
                 fn (string $time): bool => $this->slotStart($date, $time) > $now
             ));
+        }
+
+        return array_values(array_filter(
+            $times,
+            fn (string $time): bool => !$this->isDisabled($date, $time)
+        ));
+    }
+
+    public function isDisabled(string $date, string $time): bool
+    {
+        $normalized = $this->normalizeTime($time);
+        if ($normalized === null) {
+            return false;
+        }
+
+        return isset($this->disabledKeys[$this->slotKey($date, $normalized)]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function disabledTimesForDate(string $date): array
+    {
+        $prefix = $date . '|';
+        $times = [];
+        foreach (array_keys($this->disabledKeys) as $key) {
+            if (str_starts_with($key, $prefix)) {
+                $times[] = substr($key, strlen($prefix));
+            }
         }
 
         return $times;
@@ -149,6 +166,10 @@ final class SlotService
     {
         $normalized = $this->normalizeTime($time);
         if ($normalized === null || !$this->isOfferedTime($date, $normalized)) {
+            throw new InvalidArgumentException('That time slot is not offered.');
+        }
+
+        if ($this->isDisabled($date, $normalized)) {
             throw new InvalidArgumentException('That time slot is not offered.');
         }
 
@@ -335,6 +356,57 @@ final class SlotService
         }
 
         return $hours;
+    }
+
+    /**
+     * 15-minute start times after occupancy, before hidden-slot and past-time filters.
+     *
+     * @param list<array{date?:string,time?:string}> $occupied
+     * @return list<string>
+     */
+    private function startTimesForDate(string $date, array $occupied = []): array
+    {
+        $day = $this->parseDate($date);
+        $windows = $this->windowsForDate($day);
+        if ($windows === []) {
+            return [];
+        }
+
+        $blocks = $this->mergedOccupancyForDate($date, $occupied);
+        $starts = [];
+
+        foreach ($windows as $window) {
+            foreach ($this->startsForWindow($window, $blocks) as $minutes) {
+                $starts[$this->formatMinutes($minutes)] = true;
+            }
+        }
+
+        $times = array_keys($starts);
+        sort($times);
+
+        return $times;
+    }
+
+    /**
+     * @param list<array{date?:string,time?:string}> $rows
+     * @return array<string, true>
+     */
+    private function indexDisabled(array $rows): array
+    {
+        $keys = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $date = trim((string) ($row['date'] ?? ''));
+            $time = $this->normalizeTime((string) ($row['time'] ?? ''));
+            if ($date === '' || $time === null) {
+                continue;
+            }
+            $keys[$this->slotKey($date, $time)] = true;
+        }
+
+        return $keys;
     }
 
     /**

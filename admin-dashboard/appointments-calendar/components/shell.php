@@ -1,4 +1,4 @@
-<div class="er-cal" data-er-calendar data-view="<?php echo htmlspecialchars($view, ENT_QUOTES, 'UTF-8'); ?>">
+<div class="er-cal" data-er-calendar data-view="<?php echo htmlspecialchars($view, ENT_QUOTES, 'UTF-8'); ?>" data-date="<?php echo htmlspecialchars($selected->format('Y-m-d'), ENT_QUOTES, 'UTF-8'); ?>" data-csrf="<?php echo htmlspecialchars(appointment_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>" data-hide-slot-url="/admin-dashboard/appointments-calendar/api/toggle-slot.php">
     <header class="er-cal-topbar">
         <div>
             <p class="er-admin-kicker">Eat Rrite consultant</p>

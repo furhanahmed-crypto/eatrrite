@@ -9,6 +9,7 @@
  *   SHEET_ID       = 1hbwqnwyzt4heR4O6lHQtCDItofUkbCH98vQxuQRaWbU
  *   TAB_NAME            = Sheet1
  *   SLOT_TIMES_TAB      = slot-times-config  (optional; PHP also sends tab_name)
+ *   DISABLED_SLOTS_TAB  = disabled-slots     (optional; PHP also sends disabled_tab_name)
  *
  * Then: Services (+) → Google Calendar API
  * Deploy → New deployment → Web app → Execute as Me → Anyone
@@ -38,6 +39,14 @@ function doPost(e) {
 
     if (payload.action === "list_slot_times") {
       return json_({ ok: true, config: listSlotTimes_(payload) });
+    }
+
+    if (payload.action === "list_disabled_slots") {
+      return json_({ ok: true, disabled: listDisabledSlots_(payload) });
+    }
+
+    if (payload.action === "set_disabled_slot") {
+      return json_(setDisabledSlot_(payload));
     }
 
     if (payload.action === "book") {
@@ -201,6 +210,142 @@ function listSlotTimes_(payload) {
   return { found: windows.length > 0, settings: settings, windows: windows };
 }
 
+const DISABLED_HEADERS = ["Date", "Time", "Disabled", "Updated At"];
+
+function disabledTabName_(payload) {
+  return (
+    (payload && payload.disabled_tab_name) ||
+    PropertiesService.getScriptProperties().getProperty("DISABLED_SLOTS_TAB") ||
+    "disabled-slots"
+  );
+}
+
+function getDisabledSheet_(payload, createIfMissing) {
+  const spreadsheet = SpreadsheetApp.openById(
+    (payload && payload.sheet_id) ||
+      PropertiesService.getScriptProperties().getProperty("SHEET_ID") ||
+      "",
+  );
+  const tabName = disabledTabName_(payload);
+  let sheet = spreadsheet.getSheetByName(tabName);
+  if (!sheet) {
+    if (!createIfMissing) {
+      return null;
+    }
+    sheet = spreadsheet.insertSheet(tabName);
+    sheet
+      .getRange(1, 1, 1, DISABLED_HEADERS.length)
+      .setValues([DISABLED_HEADERS]);
+    sheet.getRange(1, 1, 1, DISABLED_HEADERS.length).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    sheet.getRange("A:B").setNumberFormat("@");
+  }
+  return sheet;
+}
+
+function isTruthyDisabled_(value) {
+  if (value === true || value === 1) {
+    return true;
+  }
+  const text = String(value || "")
+    .trim()
+    .toLowerCase();
+  return text === "true" || text === "yes" || text === "1" || text === "hidden";
+}
+
+function listDisabledSlots_(payload) {
+  const sheet = getDisabledSheet_(payload, false);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return [];
+  }
+
+  const lastCol = Math.max(sheet.getLastColumn(), DISABLED_HEADERS.length);
+  const values = sheet
+    .getRange(2, 1, sheet.getLastRow() - 1, lastCol)
+    .getValues();
+  const disabled = [];
+
+  values.forEach(function (row) {
+    if (!isTruthyDisabled_(row[2])) {
+      return;
+    }
+    const date = normalizeDate_(row[0]);
+    const time = formatClock_(row[1]);
+    if (!date || !time) {
+      return;
+    }
+    disabled.push({ date: date, time: time });
+  });
+
+  return disabled;
+}
+
+function isDisabledSlot_(payload, date, time) {
+  return listDisabledSlots_(payload).some(function (row) {
+    return row.date === date && row.time === time;
+  });
+}
+
+function setDisabledSlot_(payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+
+  try {
+    const date = normalizeDate_(payload.date);
+    const time = normalizeTime_(payload.time);
+    const hidden =
+      payload.hidden === true ||
+      payload.hidden === "true" ||
+      payload.hidden === 1 ||
+      payload.hidden === "1";
+
+    if (!date || !time) {
+      throw new Error("Appointment date and time are required.");
+    }
+
+    const sheet = getDisabledSheet_(payload, true);
+    const lastRow = sheet.getLastRow();
+    let foundRow = 0;
+
+    if (lastRow >= 2) {
+      const lastCol = Math.max(sheet.getLastColumn(), DISABLED_HEADERS.length);
+      const values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+      for (let i = 0; i < values.length; i++) {
+        const rowDate = normalizeDate_(values[i][0]);
+        const rowTime = formatClock_(values[i][1]);
+        if (rowDate === date && rowTime === time) {
+          foundRow = i + 2;
+          break;
+        }
+      }
+    }
+
+    const updatedAt = Utilities.formatDate(
+      new Date(),
+      "Asia/Kolkata",
+      "yyyy-MM-dd HH:mm:ss",
+    );
+
+    if (hidden) {
+      if (foundRow) {
+        sheet
+          .getRange(foundRow, 1, 1, DISABLED_HEADERS.length)
+          .setValues([[date, time, "TRUE", updatedAt]]);
+      } else {
+        sheet.appendRow([date, time, "TRUE", updatedAt]);
+        foundRow = sheet.getLastRow();
+      }
+      sheet.getRange(foundRow, 1, 1, 2).setNumberFormat("@");
+    } else if (foundRow) {
+      sheet.deleteRow(foundRow);
+    }
+
+    return { ok: true, date: date, time: time, hidden: hidden };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function book_(payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -226,6 +371,10 @@ function book_(payload) {
 
     if (taken) {
       throw new Error("slot_taken");
+    }
+
+    if (isDisabledSlot_(payload, date, time)) {
+      throw new Error("That time slot is not offered.");
     }
 
     const bookedAt = Utilities.formatDate(

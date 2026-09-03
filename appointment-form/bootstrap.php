@@ -13,6 +13,7 @@ require_once __DIR__ . '/lib/HoldService.php';
 require_once __DIR__ . '/lib/RazorpayService.php';
 require_once __DIR__ . '/lib/GoogleAppsScriptClient.php';
 require_once __DIR__ . '/lib/SlotTimesStore.php';
+require_once __DIR__ . '/lib/DisabledSlotsStore.php';
 require_once __DIR__ . '/lib/BookingStore.php';
 require_once __DIR__ . '/lib/AppointmentService.php';
 
@@ -23,17 +24,8 @@ function appointment_runtime_config(): array
     static $runtime = null;
     if ($runtime === null) {
         $config = appointment_config();
-        $store = new SlotTimesStore($config);
-        $config['slot_times'] = $store->load();
-        try {
-            new SlotService($config);
-        } catch (Throwable $e) {
-            error_log('slot-times-config from sheet failed, using local file: ' . $e->getMessage());
-            $store->clearCache();
-            $local = $store->loadLocal();
-            $local['source'] = 'local';
-            $config['slot_times'] = $local;
-        }
+        $config['slot_times'] = (new SlotTimesStore($config))->load();
+        $config['disabled_slots'] = (new DisabledSlotsStore($config))->all();
         $runtime = $config;
     }
 

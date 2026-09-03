@@ -9,6 +9,7 @@ final class GoogleAppsScriptClient
     private string $sheetId;
     private string $tabName;
     private string $slotTimesTab;
+    private string $disabledSlotsTab;
 
     public function __construct(array $config)
     {
@@ -17,6 +18,7 @@ final class GoogleAppsScriptClient
         $this->sheetId = $config['google_sheet_id'];
         $this->tabName = $config['google_sheet_tab'];
         $this->slotTimesTab = (string) ($config['google_slot_times_tab'] ?? 'slot-times-config');
+        $this->disabledSlotsTab = (string) ($config['google_disabled_slots_tab'] ?? 'disabled-slots');
     }
 
     public function isConfigured(): bool
@@ -148,6 +150,54 @@ final class GoogleAppsScriptClient
     }
 
     /**
+     * @return list<array{date:string,time:string}>
+     */
+    public function listDisabledSlots(): array
+    {
+        if (!$this->isConfigured()) {
+            return [];
+        }
+
+        $response = $this->call([
+            'action' => 'list_disabled_slots',
+        ]);
+
+        $rows = $response['disabled'] ?? [];
+        if (!is_array($rows)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $date = (string) ($row['date'] ?? '');
+            $time = (string) ($row['time'] ?? '');
+            if ($date === '' || $time === '') {
+                continue;
+            }
+            $out[] = ['date' => $date, 'time' => $time];
+        }
+
+        return $out;
+    }
+
+    public function setDisabledSlot(string $date, string $time, bool $hidden): void
+    {
+        if (!$this->isConfigured()) {
+            throw new RuntimeException('Google Sheet is not configured.');
+        }
+
+        $this->call([
+            'action' => 'set_disabled_slot',
+            'date' => $date,
+            'time' => $time,
+            'hidden' => $hidden,
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
@@ -157,6 +207,9 @@ final class GoogleAppsScriptClient
         $payload['sheet_id'] = $this->sheetId;
         if (empty($payload['tab_name'])) {
             $payload['tab_name'] = $this->tabName;
+        }
+        if (empty($payload['disabled_tab_name'])) {
+            $payload['disabled_tab_name'] = $this->disabledSlotsTab;
         }
 
         $ch = curl_init($this->url);

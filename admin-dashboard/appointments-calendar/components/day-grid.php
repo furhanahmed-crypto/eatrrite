@@ -44,9 +44,20 @@
                     <?php continue; ?>
                 <?php endif; ?>
 
-                <div class="er-cal-slot is-open">
+                <div class="er-cal-slot <?php echo $row['kind'] === 'disabled' ? 'is-hidden' : 'is-open'; ?>">
                     <time><?php echo htmlspecialchars((string) $row['display_time'], ENT_QUOTES, 'UTF-8'); ?></time>
-                    <span>Open</span>
+                    <span data-er-slot-status><?php echo $row['kind'] === 'disabled' ? 'Hidden' : 'Open'; ?></span>
+                    <label class="er-cal-hide">
+                        <span>Hide slot</span>
+                        <input
+                            type="checkbox"
+                            role="switch"
+                            data-er-hide-slot
+                            data-time="<?php echo htmlspecialchars((string) $row['time'], ENT_QUOTES, 'UTF-8'); ?>"
+                            aria-label="Hide this slot from customer booking"
+                            <?php echo !empty($row['hidden']) || $row['kind'] === 'disabled' ? 'checked' : ''; ?>
+                        >
+                    </label>
                 </div>
             <?php endforeach; ?>
         </div>

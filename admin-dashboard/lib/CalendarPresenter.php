@@ -112,10 +112,12 @@ final class CalendarPresenter
                 continue;
             }
 
+            $hidden = $slots->isDisabled($date, $time);
             $rows[] = [
-                'kind' => 'open',
+                'kind' => $hidden ? 'disabled' : 'open',
                 'time' => $time,
                 'display_time' => $slots->displayTime($time),
+                'hidden' => $hidden,
             ];
         }
 
