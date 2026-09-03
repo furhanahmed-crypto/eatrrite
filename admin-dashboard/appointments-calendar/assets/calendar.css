@@ -127,7 +127,7 @@ a { color: inherit; }
 
 .er-cal-layout {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
     gap: 16px;
     align-items: start;
 }
@@ -143,6 +143,7 @@ a { color: inherit; }
 .er-cal-sidebar {
     display: grid;
     gap: 0;
+    min-width: 0;
     overflow: hidden;
 }
 
@@ -151,6 +152,7 @@ a { color: inherit; }
     border-top: 1px solid var(--er-line);
     border-radius: 0;
     padding: 16px;
+    min-width: 0;
 }
 
 .er-cal-panel h2,
@@ -161,6 +163,8 @@ a { color: inherit; }
 
 .er-cal-mini {
     border-top: 0;
+    min-width: 0;
+    padding: 12px;
 }
 
 .er-cal-mini__nav,
@@ -171,6 +175,22 @@ a { color: inherit; }
     align-items: center;
     justify-content: space-between;
     gap: 10px;
+    min-width: 0;
+}
+
+.er-cal-mini__nav h2 {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.er-cal-mini__nav .er-cal-icon-btn {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
 }
 
 .er-cal-mini__weekdays,
@@ -179,6 +199,8 @@ a { color: inherit; }
 .er-cal-month__grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
 }
 
 .er-cal-mini__weekdays,
@@ -191,14 +213,24 @@ a { color: inherit; }
     padding: 8px 0;
 }
 
+.er-cal-mini__weekdays span {
+    min-width: 0;
+    overflow: hidden;
+    letter-spacing: 0;
+}
+
 .er-cal-mini__day {
     position: relative;
     display: grid;
     place-items: center;
-    height: 34px;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    aspect-ratio: 1;
+    max-height: 32px;
     border-radius: 999px;
     text-decoration: none;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .er-cal-mini__day.is-outside { color: #b3bfb1; }

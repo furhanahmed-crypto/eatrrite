@@ -11,10 +11,8 @@ $slots = new SlotService($config);
 $sheet = new GoogleAppsScriptClient($config);
 $feed = new AppointmentFeed($slots, $sheet);
 
-$view = (string) ($_GET['view'] ?? 'month');
-if (!in_array($view, ['month', 'day'], true)) {
-    $view = 'month';
-}
+$requestedView = (string) ($_GET['view'] ?? '');
+$view = in_array($requestedView, ['month', 'day'], true) ? $requestedView : 'month';
 
 $today = $slots->today()->setTime(0, 0, 0);
 $dateParam = trim((string) ($_GET['date'] ?? ''));
@@ -22,6 +20,15 @@ try {
     $selected = $dateParam !== '' ? $slots->parseDate($dateParam) : $today;
 } catch (InvalidArgumentException) {
     $selected = $today;
+}
+
+$canonicalDate = $selected->format('Y-m-d');
+if ($requestedView !== $view || $dateParam !== $canonicalDate) {
+    header('Location: /admin-dashboard/appointments-calendar/?' . http_build_query([
+        'view' => $view,
+        'date' => $canonicalDate,
+    ]), true, 302);
+    exit;
 }
 
 $month = $selected->modify('first day of this month')->setTime(0, 0, 0);
