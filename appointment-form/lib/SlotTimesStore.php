@@ -99,6 +99,7 @@ final class SlotTimesStore
     public function parseSheetPayload(array $payload): array
     {
         $local = $this->loadLocal();
+        $tz = new DateTimeZone('Asia/Kolkata');
         $settings = is_array($payload['settings'] ?? null) ? $payload['settings'] : [];
         $windows = is_array($payload['windows'] ?? null) ? $payload['windows'] : [];
 
@@ -126,9 +127,9 @@ final class SlotTimesStore
                 continue;
             }
             $sawWindowRow = true;
-            $start = trim((string) ($window['start'] ?? ''));
-            $end = trim((string) ($window['end'] ?? ''));
-            if ($start === '' || $end === '') {
+            $start = SlotService::parseClock((string) ($window['start'] ?? ''), $tz);
+            $end = SlotService::parseClock((string) ($window['end'] ?? ''), $tz);
+            if ($start === null || $end === null) {
                 continue;
             }
             $weekly[$day][] = ['start' => $start, 'end' => $end];
@@ -136,6 +137,14 @@ final class SlotTimesStore
 
         if (!$sawWindowRow) {
             throw new RuntimeException('slot-times-config sheet has no weekday rows.');
+        }
+
+        $parsedWindows = 0;
+        foreach ($weekly as $windows) {
+            $parsedWindows += count($windows);
+        }
+        if ($parsedWindows === 0) {
+            throw new RuntimeException('slot-times-config sheet times could not be parsed. Use HH:MM.');
         }
 
         return [
@@ -196,6 +205,13 @@ final class SlotTimesStore
         }
 
         return $decoded['rules'];
+    }
+
+    public function clearCache(): void
+    {
+        if (is_file($this->cacheFile)) {
+            @unlink($this->cacheFile);
+        }
     }
 
     /**

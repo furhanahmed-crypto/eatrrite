@@ -192,8 +192,8 @@ function listSlotTimes_(payload) {
         weekday: String(row[2] || "")
           .trim()
           .toLowerCase(),
-        start: String(row[3] || "").trim(),
-        end: String(row[4] || "").trim(),
+        start: formatClock_(row[3]),
+        end: formatClock_(row[4]),
       });
     }
   });
@@ -325,6 +325,16 @@ function normalizeDate_(value) {
   }
 
   return "";
+}
+
+function formatClock_(value) {
+  if (typeof value === "number" && isFinite(value)) {
+    const minutes = Math.round((value % 1) * 24 * 60);
+    const hour = Math.floor(minutes / 60) % 24;
+    const minute = minutes % 60;
+    return pad_(hour) + ":" + pad_(minute);
+  }
+  return normalizeTime_(value);
 }
 
 function normalizeTime_(value) {

@@ -23,7 +23,17 @@ function appointment_runtime_config(): array
     static $runtime = null;
     if ($runtime === null) {
         $config = appointment_config();
-        $config['slot_times'] = (new SlotTimesStore($config))->load();
+        $store = new SlotTimesStore($config);
+        $config['slot_times'] = $store->load();
+        try {
+            new SlotService($config);
+        } catch (Throwable $e) {
+            error_log('slot-times-config from sheet failed, using local file: ' . $e->getMessage());
+            $store->clearCache();
+            $local = $store->loadLocal();
+            $local['source'] = 'local';
+            $config['slot_times'] = $local;
+        }
         $runtime = $config;
     }
 
